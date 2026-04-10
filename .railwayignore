@@ -1,0 +1,6 @@
+data/portfolio.json
+data/bot_state.json
+__pycache__/
+*.pyc
+launch.bat
+.playwright-mcp/

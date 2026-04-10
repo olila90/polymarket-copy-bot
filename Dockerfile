@@ -11,4 +11,4 @@ RUN mkdir -p data
 
 EXPOSE 8501
 
-CMD ["bash", "start.sh"]
+CMD python bot/copy_bot.py & streamlit run dashboard/app.py --server.address 0.0.0.0 --server.port ${PORT:-8501} --server.headless true --browser.gatherUsageStats false
