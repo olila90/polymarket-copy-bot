@@ -108,7 +108,8 @@ def refresh_trader(state: dict) -> None:
 
     if trader["address"] != state.get("current_trader"):
         log(state, f"Nouveau trader sélectionné : {trader['username']} (PnL: ${trader['pnl']:,.0f})")
-        state["last_activity_check"] = int(time.time()) - 3600
+        # Démarrer depuis 2h en arrière max — évite de rattraper un historique trop ancien
+        state["last_activity_check"] = int(time.time()) - 2 * 3600
         # Réinitialiser le sizing au changement de trader
         state["estimated_daily_trades"] = None
         state["dynamic_trade_size_pct"] = None

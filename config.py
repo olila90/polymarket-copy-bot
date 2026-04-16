@@ -5,6 +5,7 @@ LEADERBOARD_REFRESH_SEC = 3600  # Refresh top trader toutes les heures
 LEADERBOARD_PERIOD = "MONTH"    # DAY / WEEK / MONTH / ALL
 LEADERBOARD_METRIC = "PNL"      # PNL ou VOL
 MIN_TRADE_USD = 5               # Ignorer trades originaux < $5
+MAX_TRADE_AGE_H = 6             # Ignorer trades de plus de 6h (évite vieux historiques)
 
 # Sizing dynamique : budget_journalier / nb_trades_estimés
 DAILY_BUDGET_PCT = 0.80         # 80% du portfolio à déployer par jour max
