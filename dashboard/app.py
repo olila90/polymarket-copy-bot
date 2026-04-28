@@ -729,7 +729,28 @@ with tab4:
                 st.info("// NO LOGS")
 
         st.divider()
-        if st.button("⚡  FORCE LEADERBOARD REFRESH"):
+        col_reset, col_lb = st.columns(2)
+        if col_reset.button("⚠  RESET P&L ($1 000)"):
+            pf_reset = {
+                "initial_balance": INITIAL_BALANCE,
+                "cash": INITIAL_BALANCE,
+                "positions": {},
+                "trade_history": [],
+            }
+            portfolio_mod.save(pf_reset)
+            state["total_trades_copied"] = 0
+            state["seen_tx_hashes"] = []
+            state["stop_loss_triggered"] = False
+            state["last_activity_check"] = int(time.time())
+            tmp = str(BOT_STATE_FILE) + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(state, f, indent=2)
+            os.replace(tmp, BOT_STATE_FILE)
+            st.cache_data.clear()
+            st.success("// P&L RESET → $1,000 USDC")
+            st.rerun()
+
+        if col_lb.button("⚡  FORCE LEADERBOARD REFRESH"):
             with st.spinner("Querying Polymarket API..."):
                 trader = get_top_trader()
                 if trader:
@@ -746,3 +767,7 @@ with tab4:
                     st.rerun()
                 else:
                     st.error("// API ERROR — Impossible de récupérer le leaderboard.")
+
+        # Afficher le statut stop-loss
+        if state.get("stop_loss_triggered"):
+            st.error("// ⚠ STOP-LOSS ACTIF — Trades suspendus. Réinitialise le P&L pour reprendre.")

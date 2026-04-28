@@ -27,6 +27,7 @@ from config import (
     INITIAL_BALANCE, MAX_POSITION_SIZE_PCT,
     POLLING_INTERVAL_SEC, LEADERBOARD_REFRESH_SEC, MAX_LOGS,
     DAILY_BUDGET_PCT, MIN_TRADE_SIZE_PCT, MAX_TRADE_SIZE_PCT, TRADE_FREQ_WINDOW_H,
+    STOP_LOSS_PCT, MAX_SEEN_TX_HASHES,
 )
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -45,6 +46,8 @@ def _default_state() -> dict:
         "total_trades_copied": 0,
         "estimated_daily_trades": None,
         "dynamic_trade_size_pct": None,
+        "seen_tx_hashes": [],
+        "stop_loss_triggered": False,
         "logs": [],
     }
 
@@ -133,14 +136,27 @@ def process_trades(state: dict) -> None:
     if not address:
         return
 
+    pf = portfolio_mod.load(INITIAL_BALANCE)
+
+    # Stop-loss : suspendre si portfolio < capital initial × (1 - STOP_LOSS_PCT)
+    total_value = portfolio_mod.get_total_value(pf, {})
+    stop_loss_floor = pf["initial_balance"] * (1 - STOP_LOSS_PCT)
+    if total_value < stop_loss_floor:
+        if not state.get("stop_loss_triggered"):
+            log(state, f"STOP-LOSS déclenché — portfolio ${total_value:.2f} < seuil ${stop_loss_floor:.2f}. Trades suspendus.")
+            state["stop_loss_triggered"] = True
+        state["last_activity_check"] = int(time.time())
+        return
+    else:
+        state["stop_loss_triggered"] = False
+
+    seen_tx_hashes = set(state.get("seen_tx_hashes", []))
     since_ts = state.get("last_activity_check", 0)
-    new_trades = get_new_trades(address, since_ts=since_ts)
+    new_trades = get_new_trades(address, since_ts=since_ts, seen_tx_hashes=seen_tx_hashes)
 
     if not new_trades:
         state["last_activity_check"] = int(time.time())
         return
-
-    pf = portfolio_mod.load(INITIAL_BALANCE)
 
     for trade in new_trades:
         token_id = trade["token_id"]
@@ -149,7 +165,6 @@ def process_trades(state: dict) -> None:
         # Récupérer le prix actuel (on achète au prix du marché, pas du trader original)
         current_price = get_midpoint(token_id)
         if current_price is None:
-            # Fallback sur le prix du trade original
             current_price = trade["price"]
         if current_price <= 0 or current_price >= 1:
             log(state, f"Prix invalide ({current_price}) pour {market_title} — ignoré")
@@ -184,11 +199,17 @@ def process_trades(state: dict) -> None:
         if executed:
             portfolio_mod.save(pf)
             state["total_trades_copied"] += 1
+            tx_hash = trade.get("tx_hash", "")
+            if tx_hash:
+                seen_tx_hashes.add(tx_hash)
             log(state, (
                 f"Trade copié : [{trade['outcome']}] {market_title[:50]} "
                 f"@ {current_price:.3f} — ${amount:.1f} USDC"
             ))
 
+    # Persister le set de déduplication (garder les MAX_SEEN_TX_HASHES plus récents)
+    all_hashes = list(seen_tx_hashes)
+    state["seen_tx_hashes"] = all_hashes[-MAX_SEEN_TX_HASHES:]
     state["last_activity_check"] = int(time.time())
 
 
