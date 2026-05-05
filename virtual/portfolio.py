@@ -80,6 +80,7 @@ def paper_buy(
             "avg_price": price,
             "cost_basis": amount_usdc,
             "opened_at": int(time.time()),
+            "copied_from": copied_from,
         }
 
     portfolio["cash"] -= amount_usdc

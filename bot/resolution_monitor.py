@@ -1,6 +1,9 @@
 """
 Détecte les marchés résolus en cherchant les événements REDEEM
-du trader copié sur les condition_ids de nos positions.
+sur les condition_ids de nos positions.
+
+Chaque position stocke son propre `copied_from` (adresse du trader d'origine),
+ce qui permet de détecter les résolutions même si le trader courant a changé.
 
 Logique :
   REDEEM avec usdcSize > 0  → marché gagné (payout = shares × $1.00)
@@ -10,15 +13,15 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import time
 import requests
 from config import DATA_API_BASE
 
 
-def check_resolutions(trader_address: str, positions: dict, since_ts: int) -> list[dict]:
+def check_resolutions(positions: dict, since_ts: int) -> list[dict]:
     """
     Retourne la liste des positions résolues depuis since_ts.
     positions : dict {token_id: pos} du portfolio virtuel.
+    Chaque pos doit contenir 'copied_from' (adresse du trader d'origine).
 
     Chaque élément retourné :
       {token_id, condition_id, market_title, won: bool}
@@ -30,7 +33,8 @@ def check_resolutions(trader_address: str, positions: dict, since_ts: int) -> li
 
     for token_id, pos in positions.items():
         condition_id = pos.get("condition_id", "")
-        if not condition_id:
+        trader_address = pos.get("copied_from", "")
+        if not condition_id or not trader_address:
             continue
 
         try:
@@ -55,7 +59,6 @@ def check_resolutions(trader_address: str, positions: dict, since_ts: int) -> li
             for ev in events:
                 if ev.get("type") != "REDEEM":
                     continue
-                # usdcSize > 0 → position gagnante, 0 → perdante
                 usdc = float(ev.get("usdcSize", 0))
                 resolved.append({
                     "token_id": token_id,
@@ -65,7 +68,7 @@ def check_resolutions(trader_address: str, positions: dict, since_ts: int) -> li
                     "won": usdc > 0,
                     "trader_payout_usdc": usdc,
                 })
-                break  # un seul REDEEM par marché suffit
+                break
 
         except Exception:
             continue
