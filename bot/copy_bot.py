@@ -18,7 +18,7 @@ from pathlib import Path
 from datetime import datetime
 
 from bot.trader_finder import get_top_trader
-from bot.activity_monitor import get_new_trades
+from bot.activity_monitor import get_new_trades, get_new_sells
 from bot.resolution_monitor import check_resolutions
 from api.clob_api import get_midpoint
 from api.data_api import get_user_activity
@@ -125,6 +125,54 @@ def refresh_trader(state: dict) -> None:
     log(state, f"Sizing dynamique : {n} trades/jour → {pct*100:.1f}% du portfolio par trade")
 
 
+def get_live_prices(positions: dict) -> dict:
+    """Récupère le prix midpoint actuel pour chaque position ouverte."""
+    prices = {}
+    for token_id in positions:
+        p = get_midpoint(token_id)
+        if p is not None:
+            prices[token_id] = p
+    return prices
+
+
+def process_sells(state: dict) -> None:
+    """Copie les SELL du trader : ferme nos positions correspondantes au prix marché."""
+    address = state.get("current_trader")
+    if not address:
+        return
+
+    pf = portfolio_mod.load(INITIAL_BALANCE)
+    if not pf["positions"]:
+        return
+
+    since_ts = state.get("last_activity_check", 0)
+    seen_tx_hashes = set(state.get("seen_tx_hashes", []))
+    sell_trades = get_new_sells(address, since_ts=since_ts, seen_tx_hashes=seen_tx_hashes)
+
+    for trade in sell_trades:
+        token_id = trade["token_id"]
+        if token_id not in pf["positions"]:
+            continue
+
+        current_price = get_midpoint(token_id)
+        if current_price is None:
+            current_price = trade["price"]
+
+        result = portfolio_mod.paper_sell(pf, token_id, current_price)
+        if result:
+            portfolio_mod.save(pf)
+            tx_hash = trade.get("tx_hash", "")
+            if tx_hash:
+                seen_tx_hashes.add(tx_hash)
+            sign = "+" if result["pnl"] >= 0 else ""
+            log(state, (
+                f"SELL copié : [{result['outcome']}] {result['market_title'][:45]} "
+                f"@ {current_price:.3f} → P&L {sign}{result['pnl']:.2f}"
+            ))
+
+    state["seen_tx_hashes"] = list(seen_tx_hashes)[-MAX_SEEN_TX_HASHES:]
+
+
 def process_trades(state: dict) -> None:
     address = state.get("current_trader")
     if not address:
@@ -132,8 +180,9 @@ def process_trades(state: dict) -> None:
 
     pf = portfolio_mod.load(INITIAL_BALANCE)
 
-    # Stop-loss
-    total_value = portfolio_mod.get_total_value(pf, {})
+    # Stop-loss avec prix de marché réels (évite la sous-estimation du risque)
+    live_prices = get_live_prices(pf["positions"])
+    total_value = portfolio_mod.get_total_value(pf, live_prices)
     stop_loss_floor = pf["initial_balance"] * (1 - STOP_LOSS_PCT)
     if total_value < stop_loss_floor:
         if not state.get("stop_loss_triggered"):
@@ -277,6 +326,7 @@ def run():
 
             if state.get("current_trader"):
                 process_resolutions(state)
+                process_sells(state)
                 process_trades(state)
             else:
                 log(state, "Aucun trader qualifié, nouvelle tentative dans 60s...")

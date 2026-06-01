@@ -11,7 +11,11 @@ import time
 from api.data_api import get_leaderboard, get_user_activity
 from config import LEADERBOARD_PERIOD, LEADERBOARD_METRIC, MAX_SPORTS_RATIO
 
-_SPORTS_KEYWORDS = ("O/U", " vs. ", "Spread:", "Over/Under", "Total:", "Moneyline")
+_SPORTS_KEYWORDS = (
+    "O/U", " vs. ", "Spread:", "Over/Under", "Total:", "Moneyline",
+    "NBA", "NFL", "NHL", "MLB", "NCAA", "MLS", "WNBA",
+    " Finals", "Super Bowl", "World Series", "Grand Prix",
+)
 
 
 def _is_sports_title(title: str) -> bool:

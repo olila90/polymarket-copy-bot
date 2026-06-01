@@ -159,6 +159,41 @@ def paper_close(portfolio: dict, token_id: str, won: bool) -> dict | None:
     }
 
 
+def paper_sell(portfolio: dict, token_id: str, current_price: float) -> dict | None:
+    """Ferme une position à prix marché (copie d'un SELL du trader suivi)."""
+    pos = portfolio["positions"].get(token_id)
+    if pos is None:
+        return None
+
+    payout = pos["shares"] * current_price
+    pnl = payout - pos["cost_basis"]
+
+    portfolio["cash"] += payout
+    del portfolio["positions"][token_id]
+
+    portfolio["trade_history"].append({
+        "ts": int(time.time()),
+        "market_title": pos["market_title"],
+        "outcome": pos["outcome"],
+        "action": "SELL",
+        "token_id": token_id,
+        "shares": round(pos["shares"], 4),
+        "price": current_price,
+        "cost": round(payout, 4),
+        "copied_from": "",
+        "pnl": round(pnl, 4),
+    })
+
+    return {
+        "market_title": pos["market_title"],
+        "outcome": pos["outcome"],
+        "price": current_price,
+        "payout": payout,
+        "cost_basis": pos["cost_basis"],
+        "pnl": pnl,
+    }
+
+
 def get_positions_with_pnl(portfolio: dict, prices: dict) -> list[dict]:
     """Liste des positions enrichies avec prix actuel et P&L."""
     result = []
