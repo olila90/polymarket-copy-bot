@@ -1,0 +1,14 @@
+{
+  "current_trader": null,
+  "trader_username": null,
+  "trader_pnl": 0.0,
+  "last_leaderboard_refresh": 0,
+  "last_activity_check": 0,
+  "total_trades_copied": 0,
+  "estimated_daily_trades": null,
+  "dynamic_trade_size_pct": null,
+  "seen_tx_hashes": [],
+  "last_buy_per_condition": {},
+  "stop_loss_triggered": false,
+  "logs": []
+}
