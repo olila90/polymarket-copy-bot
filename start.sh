@@ -1,7 +1,7 @@
 #!/bin/bash
 # Lance le bot en arrière-plan puis le dashboard Streamlit
 echo "Starting Polymarket Copy Bot..."
-python bot/copy_bot.py &
+(while true; do python -u bot/copy_bot.py; echo "[supervisor] copy_bot est mort (code $?), relance dans 30s"; sleep 30; done) &
 
 echo "Starting Streamlit dashboard..."
 streamlit run dashboard/app.py \
