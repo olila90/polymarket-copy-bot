@@ -9,17 +9,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import time
 from api.data_api import get_leaderboard, get_user_activity
-from config import LEADERBOARD_PERIOD, LEADERBOARD_METRIC, MAX_SPORTS_RATIO
-
-_SPORTS_KEYWORDS = (
-    "O/U", " vs. ", "Spread:", "Over/Under", "Total:", "Moneyline",
-    "NBA", "NFL", "NHL", "MLB", "NCAA", "MLS", "WNBA",
-    " Finals", "Super Bowl", "World Series", "Grand Prix",
+from config import (
+    LEADERBOARD_PERIOD, LEADERBOARD_METRIC, MAX_SPORTS_RATIO,
+    SPORTS_KEYWORDS, TOP_N_TRADERS,
 )
 
 
 def _is_sports_title(title: str) -> bool:
-    return any(kw in title for kw in _SPORTS_KEYWORDS)
+    return any(kw in title for kw in SPORTS_KEYWORDS)
 
 
 def _trader_sports_ratio(address: str, days: int = 7) -> float:
@@ -35,11 +32,11 @@ def _trader_sports_ratio(address: str, days: int = 7) -> float:
         return 0.0
 
 
-def get_top_trader() -> dict | None:
+def get_top_traders(n: int = TOP_N_TRADERS) -> list[dict]:
     """
-    Retourne le premier trader qualifié du leaderboard.
+    Retourne jusqu'à n traders qualifiés du leaderboard (dans l'ordre du classement).
     Qualifié = ratio sports < MAX_SPORTS_RATIO.
-    Retourne None en cas d'erreur ou si aucun trader ne passe le filtre.
+    Retourne une liste vide en cas d'erreur ou si aucun trader ne passe le filtre.
     """
     try:
         leaders = get_leaderboard(
@@ -48,9 +45,12 @@ def get_top_trader() -> dict | None:
             limit=10,
         )
         if not leaders:
-            return None
+            return []
 
+        qualified = []
         for top in leaders:
+            if len(qualified) >= n:
+                break
             address = top.get("proxyWallet", "")
             if not address:
                 continue
@@ -58,7 +58,7 @@ def get_top_trader() -> dict | None:
             if ratio >= MAX_SPORTS_RATIO:
                 print(f"[TraderFinder] {top.get('userName', address)[:20]} rejeté — ratio sports {ratio:.0%}")
                 continue
-            return {
+            qualified.append({
                 "address": address,
                 "username": top.get("userName", "Anonyme"),
                 "pnl": float(top.get("pnl", 0)),
@@ -66,13 +66,19 @@ def get_top_trader() -> dict | None:
                 "rank": int(top.get("rank", 1)),
                 "x_username": top.get("xUsername", ""),
                 "sports_ratio": round(ratio, 2),
-            }
+            })
 
-        return None
+        return qualified
 
     except Exception as e:
         print(f"[TraderFinder] Erreur leaderboard: {e}")
-        return None
+        return []
+
+
+def get_top_trader() -> dict | None:
+    """Compat : premier trader qualifié (utilisé par le dashboard)."""
+    traders = get_top_traders(1)
+    return traders[0] if traders else None
 
 
 def get_leaderboard_top10() -> list[dict]:

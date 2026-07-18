@@ -1,7 +1,8 @@
 INITIAL_BALANCE = 1000.0        # USDC virtuels au démarrage
 MAX_POSITION_SIZE_PCT = 0.05    # Max 5% du portfolio par condition_id (match/événement)
 POLLING_INTERVAL_SEC = 60       # Fréquence vérification activité trader
-LEADERBOARD_REFRESH_SEC = 3600  # Refresh top trader toutes les heures
+LEADERBOARD_REFRESH_SEC = 3600  # Refresh top traders toutes les heures
+TOP_N_TRADERS = 3               # Nombre de traders suivis simultanément (diversification)
 LEADERBOARD_PERIOD = "MONTH"    # DAY / WEEK / MONTH / ALL
 LEADERBOARD_METRIC = "PNL"      # PNL ou VOL
 MIN_TRADE_USD = 5               # Ignorer trades originaux < $5
@@ -20,6 +21,18 @@ MAX_SEEN_TX_HASHES = 2000       # Taille max du set de déduplication tx_hash
 MAX_OPEN_POSITIONS = 6          # Nombre max de positions ouvertes simultanées
 CONDITION_COOLDOWN_H = 4        # Cooldown entre deux achats sur le même condition_id
 MAX_SPORTS_RATIO = 0.60         # Rejeter un trader si >60% de ses trades sont des paris sportifs courts
+
+# Paris de ligne purs (50/50 par construction, edge non copiable) — exclus par trade
+LINE_BET_KEYWORDS = (
+    "O/U", "Spread:", "Over/Under", "Total:", "Moneyline",
+)
+# Liste sports complète — sert uniquement à calculer le ratio sports d'un trader
+# (qualification). Les marchés sportifs hors paris de ligne SONT copiés.
+SPORTS_KEYWORDS = LINE_BET_KEYWORDS + (
+    " vs. ",
+    "NBA", "NFL", "NHL", "MLB", "NCAA", "MLS", "WNBA",
+    " Finals", "Super Bowl", "World Series", "Grand Prix",
+)
 
 DATA_API_BASE = "https://data-api.polymarket.com"
 CLOB_API_BASE = "https://clob.polymarket.com"

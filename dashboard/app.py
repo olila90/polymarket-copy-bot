@@ -15,7 +15,7 @@ import streamlit as st
 import pandas as pd
 
 from api.clob_api import get_midpoints_batch
-from bot.trader_finder import get_leaderboard_top10, get_top_trader
+from bot.trader_finder import get_leaderboard_top10, get_top_traders
 import virtual.portfolio as portfolio_mod
 from config import INITIAL_BALANCE, LEADERBOARD_PERIOD, LEADERBOARD_METRIC
 
@@ -521,10 +521,20 @@ h3::before {
 state = load_bot_state()
 pf = portfolio_mod.load(INITIAL_BALANCE)
 
-trader_name = state.get("trader_username") or "—"
+tracked_traders = state.get("traders", [])
+# Compat ancien format mono-trader
+if not tracked_traders and state.get("current_trader"):
+    tracked_traders = [{
+        "address": state["current_trader"],
+        "username": state.get("trader_username") or "—",
+        "pnl": state.get("trader_pnl", 0),
+        "estimated_daily_trades": state.get("estimated_daily_trades"),
+        "trade_size_pct": state.get("dynamic_trade_size_pct"),
+    }]
+trader_name = ", ".join(t["username"] for t in tracked_traders) or "—"
 last_check = time_ago(state.get("last_activity_check", 0))
 n_trades = state.get("total_trades_copied", 0)
-bot_active = bool(state.get("current_trader"))
+bot_active = bool(tracked_traders)
 
 
 # ── HEADER ────────────────────────────────────────────────────────────────────
@@ -551,7 +561,7 @@ st.markdown(f"""
     box-shadow:0 0 6px {pulse_color};animation:pulse 2s infinite;vertical-align:middle;margin-right:6px;"></span>
   <span class="highlight">TRACKING</span>
   <span class="sep">|</span>
-  {trader_name[:30]}
+  {trader_name[:70]}
   <span class="sep">·</span>
   LAST SYNC <span class="highlight">{last_check}</span>
   <span class="sep">·</span>
@@ -648,7 +658,7 @@ with tab2:
 # ── TAB 3 : LEADERBOARD ───────────────────────────────────────────────────────
 
 with tab3:
-    current_trader = state.get("current_trader", "")
+    tracked_addresses = {t["address"] for t in tracked_traders}
     last_lb = time_ago(state.get("last_leaderboard_refresh", 0))
 
     st.subheader(f"Top traders — {LEADERBOARD_PERIOD} / {LEADERBOARD_METRIC}")
@@ -659,7 +669,7 @@ with tab3:
     if leaders:
         rows = []
         for t in leaders:
-            is_current = t["address"] == current_trader
+            is_current = t["address"] in tracked_addresses
             rows.append({
                 "RANG":     f"{'★ ' if is_current else ''}#{t['rank']}",
                 "USERNAME": t["username"][:25],
@@ -680,40 +690,38 @@ with tab4:
     if not state:
         st.warning("// BOT OFFLINE — Exécute `python bot/copy_bot.py` pour démarrer.")
     else:
-        trader_pnl  = state.get("trader_pnl", 0)
-        trader_addr = state.get("current_trader") or "—"
-
         col1, col2 = st.columns(2)
 
         with col1:
-            st.subheader("Trader ciblé")
+            st.subheader(f"Traders suivis ({len(tracked_traders)})")
             pulse = "#00ff88" if bot_active else "#ff3860"
-            st.markdown(f"""
-            <div class="corner-box">
-              <div style="font-family:var(--font-head);font-size:0.9rem;color:var(--cyan);margin-bottom:0.3rem;">
-                <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:{pulse};
-                  box-shadow:0 0 6px {pulse};animation:pulse 2s infinite;vertical-align:middle;margin-right:8px;"></span>
-                {trader_name[:35]}
-              </div>
-              <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.5rem;">
-                PNL MENSUEL: <span style="color:var(--green);font-family:var(--font-head);">${trader_pnl:,.0f}</span>
-              </div>
-              <div style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-muted);word-break:break-all;">
-                {trader_addr}
-              </div>
-            </div>
-            """, unsafe_allow_html=True)
+            if not tracked_traders:
+                st.info("// AUCUN TRADER SUIVI")
+            for t in tracked_traders:
+                n_daily = t.get("estimated_daily_trades")
+                trade_pct = t.get("trade_size_pct")
+                sizing = f"{n_daily} trades/j · {trade_pct*100:.1f}%/trade" if n_daily is not None and trade_pct else ""
+                st.markdown(f"""
+                <div class="corner-box" style="margin-bottom:0.6rem;">
+                  <div style="font-family:var(--font-head);font-size:0.9rem;color:var(--cyan);margin-bottom:0.3rem;">
+                    <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:{pulse};
+                      box-shadow:0 0 6px {pulse};animation:pulse 2s infinite;vertical-align:middle;margin-right:8px;"></span>
+                    {t['username'][:35]}
+                  </div>
+                  <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.5rem;">
+                    PNL MENSUEL: <span style="color:var(--green);font-family:var(--font-head);">${t.get('pnl', 0):,.0f}</span>
+                    <span style="margin-left:0.8rem;color:var(--text-muted);">{sizing}</span>
+                  </div>
+                  <div style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-muted);word-break:break-all;">
+                    {t['address']}
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
 
             st.subheader("Métriques système")
-            n_daily = state.get("estimated_daily_trades")
-            trade_pct = state.get("dynamic_trade_size_pct")
             st.metric("TRADES COPIÉS",        state.get("total_trades_copied", 0))
             st.metric("DERNIER CHECK",         time_ago(state.get("last_activity_check", 0)))
             st.metric("REFRESH LEADERBOARD",   time_ago(state.get("last_leaderboard_refresh", 0)))
-            if n_daily is not None:
-                st.metric("TRADES/JOUR ESTIMÉS",  n_daily)
-            if trade_pct is not None:
-                st.metric("TAILLE PAR TRADE",  f"{trade_pct*100:.1f}% du portfolio")
 
         with col2:
             st.subheader("System log")
@@ -752,18 +760,24 @@ with tab4:
 
         if col_lb.button("⚡  FORCE LEADERBOARD REFRESH"):
             with st.spinner("Querying Polymarket API..."):
-                trader = get_top_trader()
-                if trader:
-                    state["current_trader"]           = trader["address"]
-                    state["trader_username"]           = trader["username"]
-                    state["trader_pnl"]               = trader["pnl"]
-                    state["last_leaderboard_refresh"]  = int(time.time())
+                new_traders = get_top_traders()
+                if new_traders:
+                    state["traders"] = [{
+                        "address": t["address"],
+                        "username": t["username"],
+                        "pnl": t["pnl"],
+                        "sports_ratio": t.get("sports_ratio"),
+                        "estimated_daily_trades": None,
+                        "trade_size_pct": None,
+                    } for t in new_traders]
+                    state["last_leaderboard_refresh"] = int(time.time())
                     tmp = str(BOT_STATE_FILE) + ".tmp"
                     with open(tmp, "w") as f:
                         json.dump(state, f, indent=2)
                     os.replace(tmp, BOT_STATE_FILE)
                     st.cache_data.clear()
-                    st.success(f"// TARGET UPDATED → {trader['username']} // PNL ${trader['pnl']:,.0f}")
+                    names = ", ".join(t["username"] for t in new_traders)
+                    st.success(f"// TARGETS UPDATED → {names}")
                     st.rerun()
                 else:
                     st.error("// API ERROR — Impossible de récupérer le leaderboard.")

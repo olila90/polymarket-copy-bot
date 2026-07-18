@@ -2,9 +2,10 @@
 Boucle principale du Copy Trading Bot (paper trading).
 
 Toutes les POLLING_INTERVAL_SEC secondes :
-  - Si >LEADERBOARD_REFRESH_SEC depuis le dernier refresh : met à jour le top trader
-  - Récupère les nouveaux trades du trader courant
+  - Si >LEADERBOARD_REFRESH_SEC depuis le dernier refresh : met à jour les top traders
+  - Récupère les nouveaux trades des TOP_N_TRADERS traders suivis
   - Pour chaque nouveau trade BUY qualifié : exécute un paper trade proportionnel
+    (budget journalier réparti entre les traders)
 
 Lancer : python bot/copy_bot.py
 """
@@ -17,7 +18,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-from bot.trader_finder import get_top_trader
+from bot.trader_finder import get_top_traders
 from bot.activity_monitor import get_new_trades, get_new_sells
 from bot.resolution_monitor import check_resolutions
 from api.clob_api import get_midpoint
@@ -28,7 +29,7 @@ from config import (
     POLLING_INTERVAL_SEC, LEADERBOARD_REFRESH_SEC, MAX_LOGS,
     DAILY_BUDGET_PCT, MIN_TRADE_SIZE_PCT, MAX_TRADE_SIZE_PCT, TRADE_FREQ_WINDOW_H,
     STOP_LOSS_PCT, MAX_SEEN_TX_HASHES,
-    MAX_OPEN_POSITIONS, CONDITION_COOLDOWN_H,
+    MAX_OPEN_POSITIONS, CONDITION_COOLDOWN_H, TOP_N_TRADERS,
 )
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -39,14 +40,12 @@ BOT_STATE_FILE = DATA_DIR / "bot_state.json"
 
 def _default_state() -> dict:
     return {
-        "current_trader": None,
-        "trader_username": None,
-        "trader_pnl": 0.0,
+        # Liste des traders suivis :
+        # [{address, username, pnl, sports_ratio, estimated_daily_trades, trade_size_pct}]
+        "traders": [],
         "last_leaderboard_refresh": 0,
         "last_activity_check": int(time.time()),
         "total_trades_copied": 0,
-        "estimated_daily_trades": None,
-        "dynamic_trade_size_pct": None,
         "seen_tx_hashes": [],
         "last_buy_per_condition": {},  # {condition_id: timestamp} — cooldown anti-DCA
         "stop_loss_triggered": False,
@@ -63,8 +62,11 @@ def estimate_daily_trades(address: str) -> int:
         return 10
 
 
-def compute_trade_size_pct(n_trades: int) -> float:
-    raw = DAILY_BUDGET_PCT / n_trades
+def compute_trade_size_pct(n_trades: int, n_traders: int = 1) -> float:
+    """Budget journalier réparti entre les traders suivis, divisé par la
+    fréquence de trade estimée du trader, borné par les planchers/plafonds."""
+    budget = DAILY_BUDGET_PCT / max(n_traders, 1)
+    raw = budget / max(n_trades, 1)
     return max(MIN_TRADE_SIZE_PCT, min(MAX_TRADE_SIZE_PCT, raw))
 
 
@@ -76,6 +78,18 @@ def load_state() -> dict:
         # Migration : ajouter les clés manquantes des nouvelles versions
         state.setdefault("last_buy_per_condition", {})
         state.setdefault("stop_loss_triggered", False)
+        if "traders" not in state:
+            # Ancien format mono-trader → liste
+            state["traders"] = []
+            if state.get("current_trader"):
+                state["traders"].append({
+                    "address": state["current_trader"],
+                    "username": state.get("trader_username") or "Anonyme",
+                    "pnl": state.get("trader_pnl", 0.0),
+                    "sports_ratio": None,
+                    "estimated_daily_trades": state.get("estimated_daily_trades"),
+                    "trade_size_pct": state.get("dynamic_trade_size_pct"),
+                })
         return state
     return _default_state()
 
@@ -99,30 +113,41 @@ def log(state: dict, msg: str) -> None:
 
 # ── Logique principale ────────────────────────────────────────────────────────
 
-def refresh_trader(state: dict) -> None:
+def refresh_traders(state: dict) -> None:
     log(state, "Refresh leaderboard...")
-    trader = get_top_trader()
-    if not trader:
+    top = get_top_traders(TOP_N_TRADERS)
+    if not top:
         log(state, "Impossible de récupérer le leaderboard.")
         return
 
-    if trader["address"] != state.get("current_trader"):
-        sports_info = f", ratio sports {trader.get('sports_ratio', 0):.0%}" if "sports_ratio" in trader else ""
-        log(state, f"Nouveau trader sélectionné : {trader['username']} (PnL: ${trader['pnl']:,.0f}{sports_info})")
-        state["last_activity_check"] = int(time.time()) - 2 * 3600
-        state["estimated_daily_trades"] = None
-        state["dynamic_trade_size_pct"] = None
+    previous = {t["address"] for t in state.get("traders", [])}
+    n_traders = len(top)
 
-    state["current_trader"] = trader["address"]
-    state["trader_username"] = trader["username"]
-    state["trader_pnl"] = trader["pnl"]
+    traders = []
+    for trader in top:
+        if trader["address"] not in previous:
+            sports_info = f", ratio sports {trader.get('sports_ratio', 0):.0%}"
+            log(state, f"Nouveau trader suivi : {trader['username']} (PnL: ${trader['pnl']:,.0f}{sports_info})")
+
+        n = estimate_daily_trades(trader["address"])
+        pct = compute_trade_size_pct(n, n_traders)
+        traders.append({
+            "address": trader["address"],
+            "username": trader["username"],
+            "pnl": trader["pnl"],
+            "sports_ratio": trader.get("sports_ratio"),
+            "estimated_daily_trades": n,
+            "trade_size_pct": round(pct, 4),
+        })
+        log(state, f"Sizing {trader['username'][:20]} : {n} trades/jour → {pct*100:.1f}% du portfolio par trade")
+
+    dropped = previous - {t["address"] for t in traders}
+    if dropped:
+        names = [t["username"] for t in state.get("traders", []) if t["address"] in dropped]
+        log(state, f"Traders retirés du suivi : {', '.join(names)}")
+
+    state["traders"] = traders
     state["last_leaderboard_refresh"] = int(time.time())
-
-    n = estimate_daily_trades(trader["address"])
-    pct = compute_trade_size_pct(n)
-    state["estimated_daily_trades"] = n
-    state["dynamic_trade_size_pct"] = round(pct, 4)
-    log(state, f"Sizing dynamique : {n} trades/jour → {pct*100:.1f}% du portfolio par trade")
 
 
 def get_live_prices(positions: dict) -> dict:
@@ -136,9 +161,9 @@ def get_live_prices(positions: dict) -> dict:
 
 
 def process_sells(state: dict) -> None:
-    """Copie les SELL du trader : ferme nos positions correspondantes au prix marché."""
-    address = state.get("current_trader")
-    if not address:
+    """Copie les SELL des traders suivis : ferme nos positions correspondantes au prix marché."""
+    traders = state.get("traders", [])
+    if not traders:
         return
 
     pf = portfolio_mod.load(INITIAL_BALANCE)
@@ -147,11 +172,20 @@ def process_sells(state: dict) -> None:
 
     since_ts = state.get("last_activity_check", 0)
     seen_tx_hashes = set(state.get("seen_tx_hashes", []))
-    sell_trades = get_new_sells(address, since_ts=since_ts, seen_tx_hashes=seen_tx_hashes)
+
+    sell_trades = []
+    for trader in traders:
+        for trade in get_new_sells(trader["address"], since_ts=since_ts, seen_tx_hashes=seen_tx_hashes):
+            trade["seller_address"] = trader["address"]
+            sell_trades.append(trade)
 
     for trade in sell_trades:
         token_id = trade["token_id"]
-        if token_id not in pf["positions"]:
+        pos = pf["positions"].get(token_id)
+        if pos is None:
+            continue
+        # Ne fermer que si c'est le trader d'origine de la position qui vend
+        if pos.get("copied_from") and pos["copied_from"] != trade["seller_address"]:
             continue
 
         current_price = get_midpoint(token_id)
@@ -174,8 +208,8 @@ def process_sells(state: dict) -> None:
 
 
 def process_trades(state: dict) -> None:
-    address = state.get("current_trader")
-    if not address:
+    traders = state.get("traders", [])
+    if not traders:
         return
 
     pf = portfolio_mod.load(INITIAL_BALANCE)
@@ -195,7 +229,14 @@ def process_trades(state: dict) -> None:
 
     seen_tx_hashes = set(state.get("seen_tx_hashes", []))
     since_ts = state.get("last_activity_check", 0)
-    new_trades = get_new_trades(address, since_ts=since_ts, seen_tx_hashes=seen_tx_hashes)
+
+    # Collecter les nouveaux BUY de chaque trader suivi (annotés de leur origine)
+    new_trades = []
+    for trader in traders:
+        for trade in get_new_trades(trader["address"], since_ts=since_ts, seen_tx_hashes=seen_tx_hashes):
+            trade["trader"] = trader
+            new_trades.append(trade)
+    new_trades.sort(key=lambda t: t["ts"])
 
     if not new_trades:
         state["last_activity_check"] = int(time.time())
@@ -234,9 +275,10 @@ def process_trades(state: dict) -> None:
             log(state, f"Prix invalide ({current_price}) pour {market_title} — ignoré")
             continue
 
-        # Sizing dynamique
-        trade_size_pct = state.get("dynamic_trade_size_pct") or compute_trade_size_pct(
-            state.get("estimated_daily_trades") or 10
+        # Sizing dynamique propre au trader d'origine
+        trader = trade["trader"]
+        trade_size_pct = trader.get("trade_size_pct") or compute_trade_size_pct(
+            trader.get("estimated_daily_trades") or 10, len(traders)
         )
         # Recalculer total_value avec le portfolio à jour (après achats précédents du batch)
         current_total = portfolio_mod.get_total_value(pf, {})
@@ -255,7 +297,7 @@ def process_trades(state: dict) -> None:
             outcome=trade["outcome"],
             price=current_price,
             amount_usdc=amount,
-            copied_from=address,
+            copied_from=trader["address"],
             condition_id=condition_id,
         )
 
@@ -269,7 +311,7 @@ def process_trades(state: dict) -> None:
             last_buy_per_condition[condition_id] = now
             condition_exposure[condition_id] = existing_cond_exposure + amount
             log(state, (
-                f"Trade copié : [{trade['outcome']}] {market_title[:50]} "
+                f"Trade copié ({trader['username'][:20]}) : [{trade['outcome']}] {market_title[:50]} "
                 f"@ {current_price:.3f} — ${amount:.1f} USDC"
             ))
 
@@ -313,8 +355,8 @@ def run():
 
     state = load_state()
 
-    if not state.get("current_trader"):
-        refresh_trader(state)
+    if not state.get("traders"):
+        refresh_traders(state)
         save_state(state)
 
     while True:
@@ -322,9 +364,9 @@ def run():
             now = int(time.time())
 
             if now - state.get("last_leaderboard_refresh", 0) >= LEADERBOARD_REFRESH_SEC:
-                refresh_trader(state)
+                refresh_traders(state)
 
-            if state.get("current_trader"):
+            if state.get("traders"):
                 process_resolutions(state)
                 process_sells(state)
                 process_trades(state)

@@ -7,18 +7,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import time as _time
 from api.data_api import get_user_activity
-from config import MIN_TRADE_USD, MAX_TRADE_AGE_H
-
-# Mots-clés indiquant un marché sportif à exclure (edge non transférable)
-_SPORTS_KEYWORDS = (
-    "O/U", " vs. ", "Spread:", "Over/Under", "Total:", "Moneyline",
-    "NBA", "NFL", "NHL", "MLB", "NCAA", "MLS", "WNBA",
-    " Finals", "Super Bowl", "World Series", "Grand Prix",
-)
+from config import MIN_TRADE_USD, MAX_TRADE_AGE_H, LINE_BET_KEYWORDS
 
 
-def _is_sports_market(title: str) -> bool:
-    return any(kw in title for kw in _SPORTS_KEYWORDS)
+def _is_line_bet(title: str) -> bool:
+    """Pari de ligne pur (O/U, Spread…) : 50/50 par construction, non copiable.
+    Les autres marchés sportifs (vainqueur, score exact) sont copiés."""
+    return any(kw in title for kw in LINE_BET_KEYWORDS)
 
 
 def get_new_trades(address: str, since_ts: int, seen_tx_hashes: set | None = None) -> list[dict]:
@@ -27,7 +22,7 @@ def get_new_trades(address: str, since_ts: int, seen_tx_hashes: set | None = Non
     Filtre :
       - montant < MIN_TRADE_USD
       - trades > MAX_TRADE_AGE_H heures (edge périmé)
-      - marchés sportifs O/U / Spread (50/50, non copiables)
+      - paris de ligne O/U / Spread (50/50, non copiables)
       - tx_hash déjà traités (déduplication)
     Retourne les trades du plus ancien au plus récent.
     """
@@ -54,7 +49,7 @@ def get_new_trades(address: str, since_ts: int, seen_tx_hashes: set | None = Non
             continue
 
         title = t.get("title", "")
-        if _is_sports_market(title):
+        if _is_line_bet(title):
             continue
 
         tx_hash = t.get("transactionHash", "")
