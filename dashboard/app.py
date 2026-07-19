@@ -635,6 +635,37 @@ with tab1:
 
 with tab2:
     history = pf.get("trade_history", [])
+    trader_names = dict(state.get("trader_names", {}))
+    trader_names.update({t["address"]: t["username"] for t in tracked_traders})
+
+    def _trader_label(address: str) -> str:
+        if not address:
+            return "—"
+        return trader_names.get(address) or (address[:10] + "…")
+
+    # ── Performance par trader copié ──
+    trader_stats = portfolio_mod.get_stats_by_trader(pf, prices)
+    if trader_stats:
+        st.subheader("Performance par trader copié")
+        st.caption(
+            "SLIPPAGE = ce qu'on paie en plus (en cents) vs le prix d'entrée du trader. "
+            "S'il dépasse ~2-3 ¢ en moyenne, le retard de copie mange l'edge."
+        )
+        stat_rows = []
+        for s in trader_stats:
+            slip = s["avg_slippage"]
+            stat_rows.append({
+                "TRADER":        _trader_label(s["address"]),
+                "TRADES":        s["n_buys"],
+                "INVESTI":       f"${s['invested']:.2f}",
+                "P&L RÉALISÉ":   f"${s['realized_pnl']:+.2f}",
+                "P&L LATENT":    f"${s['unrealized_pnl']:+.2f}",
+                "P&L TOTAL":     f"${s['total_pnl']:+.2f}",
+                "W/L":           f"{s['wins']}/{s['losses']}",
+                "SLIPPAGE MOY":  f"{slip*100:+.1f} ¢" if slip is not None else "—",
+            })
+        st.dataframe(pd.DataFrame(stat_rows), use_container_width=True, hide_index=True)
+        st.divider()
 
     if history:
         st.subheader(f"Trade log — {len(history)} exécutions")
@@ -643,12 +674,14 @@ with tab2:
             copied_from = t.get("copied_from", "")
             rows.append({
                 "TIMESTAMP":   datetime.fromtimestamp(t["ts"]).strftime("%m/%d %H:%M"),
+                "ACTION":      t.get("action", ""),
                 "MARCHÉ":      t.get("market_title", "")[:55],
                 "OUTCOME":     t.get("outcome", ""),
                 "SHARES":      f"{t.get('shares', 0):.2f}",
                 "PRIX":        f"{t.get('price', 0):.3f}",
                 "USDC":        f"${t.get('cost', 0):.2f}",
-                "COPIÉ DE":    (copied_from[:10] + "…") if copied_from else "—",
+                "P&L":         f"${t['pnl']:+.2f}" if "pnl" in t else "—",
+                "COPIÉ DE":    _trader_label(copied_from),
             })
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
     else:

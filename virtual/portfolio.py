@@ -47,6 +47,7 @@ def paper_buy(
     amount_usdc: float,
     copied_from: str = "",
     condition_id: str = "",
+    trader_price: float | None = None,
 ) -> bool:
     """
     Simule un achat.
@@ -85,7 +86,7 @@ def paper_buy(
 
     portfolio["cash"] -= amount_usdc
 
-    portfolio["trade_history"].append({
+    entry = {
         "ts": int(time.time()),
         "market_title": market_title,
         "outcome": outcome,
@@ -95,7 +96,12 @@ def paper_buy(
         "price": price,
         "cost": round(amount_usdc, 4),
         "copied_from": copied_from,
-    })
+    }
+    if trader_price is not None and trader_price > 0:
+        entry["trader_price"] = trader_price
+        # Slippage : ce qu'on paie en plus (en cents) par rapport au prix du trader
+        entry["slippage"] = round(price - trader_price, 4)
+    portfolio["trade_history"].append(entry)
 
     return True
 
@@ -145,7 +151,7 @@ def paper_close(portfolio: dict, token_id: str, won: bool) -> dict | None:
         "shares": round(pos["shares"], 4),
         "price": 1.0 if won else 0.0,
         "cost": round(payout, 4),
-        "copied_from": "",
+        "copied_from": pos.get("copied_from", ""),
         "pnl": round(pnl, 4),
     })
 
@@ -180,7 +186,7 @@ def paper_sell(portfolio: dict, token_id: str, current_price: float) -> dict | N
         "shares": round(pos["shares"], 4),
         "price": current_price,
         "cost": round(payout, 4),
-        "copied_from": "",
+        "copied_from": pos.get("copied_from", ""),
         "pnl": round(pnl, 4),
     })
 
@@ -192,6 +198,65 @@ def paper_sell(portfolio: dict, token_id: str, current_price: float) -> dict | N
         "cost_basis": pos["cost_basis"],
         "pnl": pnl,
     }
+
+
+def get_stats_by_trader(portfolio: dict, prices: dict) -> list[dict]:
+    """
+    Agrège l'historique et les positions ouvertes par trader copié.
+    Retourne une ligne par adresse :
+      {address, n_buys, invested, realized_pnl, unrealized_pnl, total_pnl,
+       wins, losses, avg_slippage (None si aucun BUY avec trader_price)}
+    """
+    stats: dict[str, dict] = {}
+
+    def row(address: str) -> dict:
+        if address not in stats:
+            stats[address] = {
+                "address": address,
+                "n_buys": 0, "invested": 0.0,
+                "realized_pnl": 0.0, "unrealized_pnl": 0.0,
+                "wins": 0, "losses": 0,
+                "_slippages": [],
+            }
+        return stats[address]
+
+    for t in portfolio["trade_history"]:
+        addr = t.get("copied_from", "")
+        if not addr:
+            continue
+        r = row(addr)
+        action = t.get("action", "")
+        if action == "BUY":
+            r["n_buys"] += 1
+            r["invested"] += t.get("cost", 0)
+            if "slippage" in t:
+                r["_slippages"].append(t["slippage"])
+        elif action in ("SELL", "WIN", "LOSS"):
+            r["realized_pnl"] += t.get("pnl", 0)
+            if action == "WIN":
+                r["wins"] += 1
+            elif action == "LOSS":
+                r["losses"] += 1
+
+    for token_id, pos in portfolio["positions"].items():
+        addr = pos.get("copied_from", "")
+        if not addr:
+            continue
+        r = row(addr)
+        current_price = prices.get(token_id, pos["avg_price"])
+        r["unrealized_pnl"] += pos["shares"] * current_price - pos["cost_basis"]
+
+    result = []
+    for r in stats.values():
+        slippages = r.pop("_slippages")
+        r["avg_slippage"] = round(sum(slippages) / len(slippages), 4) if slippages else None
+        r["total_pnl"] = round(r["realized_pnl"] + r["unrealized_pnl"], 4)
+        r["realized_pnl"] = round(r["realized_pnl"], 4)
+        r["unrealized_pnl"] = round(r["unrealized_pnl"], 4)
+        r["invested"] = round(r["invested"], 4)
+        result.append(r)
+
+    return sorted(result, key=lambda x: x["total_pnl"], reverse=True)
 
 
 def get_positions_with_pnl(portfolio: dict, prices: dict) -> list[dict]:

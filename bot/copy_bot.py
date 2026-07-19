@@ -147,6 +147,10 @@ def refresh_traders(state: dict) -> None:
         log(state, f"Traders retirés du suivi : {', '.join(names)}")
 
     state["traders"] = traders
+    # Registre address → username persistant (attribution P&L même après rotation)
+    names = state.setdefault("trader_names", {})
+    for t in traders:
+        names[t["address"]] = t["username"]
     state["last_leaderboard_refresh"] = int(time.time())
 
 
@@ -299,6 +303,7 @@ def process_trades(state: dict) -> None:
             amount_usdc=amount,
             copied_from=trader["address"],
             condition_id=condition_id,
+            trader_price=trade["price"],
         )
 
         if executed:
