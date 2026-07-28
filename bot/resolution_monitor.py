@@ -1,30 +1,54 @@
 """
-Détecte les marchés résolus en cherchant les événements REDEEM
-sur les condition_ids de nos positions.
+Détecte les marchés résolus en interrogeant la résolution RÉELLE du marché
+(Gamma API) pour chaque position ouverte.
 
-Chaque position stocke son propre `copied_from` (adresse du trader d'origine),
-ce qui permet de détecter les résolutions même si le trader courant a changé.
+⚠️ L'ancienne approche (REDEEM du trader copié sur le condition_id) était
+fausse : un market maker détient souvent LES DEUX côtés d'un marché, donc il
+encaisse un REDEEM > 0 même quand NOTRE côté a perdu — toutes nos défaites
+étaient comptées comme des victoires (bug du +57 000% du 28/07/2026).
 
 Logique :
-  REDEEM avec usdcSize > 0  → marché gagné (payout = shares × $1.00)
-  REDEEM avec usdcSize = 0  → marché perdu (payout = $0)
+  marché closed + prix final de NOTRE token ≥ 0.999 → gagné
+  marché closed + prix final de NOTRE token ≤ 0.001 → perdu
+  sinon (marché ouvert, prix intermédiaire, données absentes) → pas résolu
 """
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import requests
-from config import DATA_API_BASE
+import json
+from api.clob_api import get_market_by_token
 
 
-def check_resolutions(positions: dict, since_ts: int) -> list[dict]:
+def _final_token_price(market: dict, token_id: str) -> float | None:
+    """Prix final de token_id dans le marché Gamma, ou None si introuvable."""
+    try:
+        clob_token_ids = market.get("clobTokenIds") or []
+        if isinstance(clob_token_ids, str):
+            clob_token_ids = json.loads(clob_token_ids)
+
+        outcome_prices = market.get("outcomePrices")
+        if isinstance(outcome_prices, str):
+            outcome_prices = json.loads(outcome_prices)
+        if not outcome_prices or token_id not in clob_token_ids:
+            return None
+
+        idx = clob_token_ids.index(token_id)
+        if idx >= len(outcome_prices):
+            return None
+        return float(outcome_prices[idx])
+    except Exception:
+        return None
+
+
+def check_resolutions(positions: dict, since_ts: int = 0) -> list[dict]:
     """
-    Retourne la liste des positions résolues depuis since_ts.
+    Retourne la liste des positions résolues.
     positions : dict {token_id: pos} du portfolio virtuel.
-    Chaque pos doit contenir 'copied_from' (adresse du trader d'origine).
+    since_ts : conservé pour compatibilité d'appel (non utilisé).
 
     Chaque élément retourné :
-      {token_id, condition_id, market_title, won: bool}
+      {token_id, condition_id, market_title, outcome, won: bool}
     """
     if not positions:
         return []
@@ -32,43 +56,33 @@ def check_resolutions(positions: dict, since_ts: int) -> list[dict]:
     resolved = []
 
     for token_id, pos in positions.items():
-        condition_id = pos.get("condition_id", "")
-        trader_address = pos.get("copied_from", "")
-        if not condition_id or not trader_address:
-            continue
-
         try:
-            r = requests.get(
-                f"{DATA_API_BASE}/activity",
-                params={
-                    "user": trader_address,
-                    "market": condition_id,
-                    "type": "REDEEM",
-                    "start": since_ts,
-                    "limit": 5,
-                },
-                timeout=15,
-            )
-            if r.status_code != 200:
+            market = get_market_by_token(token_id)
+            if not market:
+                continue
+            if not market.get("closed"):
                 continue
 
-            events = r.json()
-            if not isinstance(events, list):
+            price = _final_token_price(market, token_id)
+            if price is None:
                 continue
 
-            for ev in events:
-                if ev.get("type") != "REDEEM":
-                    continue
-                usdc = float(ev.get("usdcSize", 0))
-                resolved.append({
-                    "token_id": token_id,
-                    "condition_id": condition_id,
-                    "market_title": pos.get("market_title", ""),
-                    "outcome": pos.get("outcome", ""),
-                    "won": usdc > 0,
-                    "trader_payout_usdc": usdc,
-                })
-                break
+            # Ne conclure que sur une résolution franche (1.0 ou 0.0).
+            # Un marché fermé avec prix intermédiaire n'est pas encore réglé.
+            if price >= 0.999:
+                won = True
+            elif price <= 0.001:
+                won = False
+            else:
+                continue
+
+            resolved.append({
+                "token_id": token_id,
+                "condition_id": pos.get("condition_id", ""),
+                "market_title": pos.get("market_title", ""),
+                "outcome": pos.get("outcome", ""),
+                "won": won,
+            })
 
         except Exception:
             continue
