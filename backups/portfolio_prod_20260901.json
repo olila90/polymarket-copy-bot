@@ -1,0 +1,146 @@
+{
+  "initial_balance": 1000.0,
+  "cash": 880.0,
+  "positions": {
+    "93172624340065785188870887782448299964839436913315540871789584978755926231476": {
+      "condition_id": "0x680306d861bf948b0efb6212bc3b5fdab520813e7ae406ea1918c23d7e12a7a0",
+      "market_title": "Will IFK Norrkoping FK win on 2026-07-28?",
+      "outcome": "Yes",
+      "shares": 43.956043956043956,
+      "avg_price": 0.455,
+      "cost_basis": 20.0,
+      "opened_at": 1785254671,
+      "copied_from": "0x204f72f35326db932158cba6adff0b9a1da95e14"
+    },
+    "81520721165991210203477623719511275189777558126917351152435155927874870879050": {
+      "condition_id": "0x8646e8f7483f209cf85f4eae70837835b14c5dc79ba10b8728c41d11e1196232",
+      "market_title": "Will Kuopion PS vs. Sabah FK end in a draw?",
+      "outcome": "Yes",
+      "shares": 59.70149253731343,
+      "avg_price": 0.335,
+      "cost_basis": 20.0,
+      "opened_at": 1785254671,
+      "copied_from": "0x204f72f35326db932158cba6adff0b9a1da95e14"
+    },
+    "91254204299476120995622940221279320848768430133442562343030652561297254198951": {
+      "condition_id": "0xd6087ef0d3946a9cc407a986029e042d58526740406140106ec2185dd2e61552",
+      "market_title": "Will Landskrona BoIS win on 2026-07-28?",
+      "outcome": "Yes",
+      "shares": 70.17543859649123,
+      "avg_price": 0.285,
+      "cost_basis": 20.0,
+      "opened_at": 1785254671,
+      "copied_from": "0x204f72f35326db932158cba6adff0b9a1da95e14"
+    },
+    "94572148605479509722155065631577003854124386213108459073102315900335727604195": {
+      "condition_id": "0x01d5d23e3a962350f4032de2afe1db2e118fa5bfd6e0d932d2f63efbda10b931",
+      "market_title": "Will Sabah FK win on 2026-07-29?",
+      "outcome": "No",
+      "shares": 29.1970802919708,
+      "avg_price": 0.685,
+      "cost_basis": 20.0,
+      "opened_at": 1785254671,
+      "copied_from": "0x204f72f35326db932158cba6adff0b9a1da95e14"
+    },
+    "73027974692939253794014024864142965440432843916818755465650787278574557193111": {
+      "condition_id": "0xadfdd1bd748d5789cde2539f5905913ad0ab51c6126576a59e301ae90037badf",
+      "market_title": "Exact Score: Kuopion PS 0 - 0 Sabah FK?",
+      "outcome": "No",
+      "shares": 24.242424242424242,
+      "avg_price": 0.825,
+      "cost_basis": 20.0,
+      "opened_at": 1785254732,
+      "copied_from": "0x204f72f35326db932158cba6adff0b9a1da95e14"
+    },
+    "59478697407353950347268723964763429170756804066829805925090412410229678414875": {
+      "condition_id": "0x6727df6561862cd07bb16be94a9be15f1b7ee7ebd793b9ca2c5c79354d1cc735",
+      "market_title": "Will Kuopion PS win on 2026-07-29?",
+      "outcome": "No",
+      "shares": 30.534351145038165,
+      "avg_price": 0.655,
+      "cost_basis": 20.0,
+      "opened_at": 1785254792,
+      "copied_from": "0x204f72f35326db932158cba6adff0b9a1da95e14"
+    }
+  },
+  "trade_history": [
+    {
+      "ts": 1785254671,
+      "market_title": "Will IFK Norrkoping FK win on 2026-07-28?",
+      "outcome": "Yes",
+      "action": "BUY",
+      "token_id": "93172624340065785188870887782448299964839436913315540871789584978755926231476",
+      "shares": 43.956,
+      "price": 0.455,
+      "cost": 20.0,
+      "copied_from": "0x204f72f35326db932158cba6adff0b9a1da95e14",
+      "trader_price": 0.44,
+      "slippage": 0.015
+    },
+    {
+      "ts": 1785254671,
+      "market_title": "Will Kuopion PS vs. Sabah FK end in a draw?",
+      "outcome": "Yes",
+      "action": "BUY",
+      "token_id": "81520721165991210203477623719511275189777558126917351152435155927874870879050",
+      "shares": 59.7015,
+      "price": 0.335,
+      "cost": 20.0,
+      "copied_from": "0x204f72f35326db932158cba6adff0b9a1da95e14",
+      "trader_price": 0.34,
+      "slippage": -0.005
+    },
+    {
+      "ts": 1785254671,
+      "market_title": "Will Landskrona BoIS win on 2026-07-28?",
+      "outcome": "Yes",
+      "action": "BUY",
+      "token_id": "91254204299476120995622940221279320848768430133442562343030652561297254198951",
+      "shares": 70.1754,
+      "price": 0.285,
+      "cost": 20.0,
+      "copied_from": "0x204f72f35326db932158cba6adff0b9a1da95e14",
+      "trader_price": 0.2899999709,
+      "slippage": -0.005
+    },
+    {
+      "ts": 1785254671,
+      "market_title": "Will Sabah FK win on 2026-07-29?",
+      "outcome": "No",
+      "action": "BUY",
+      "token_id": "94572148605479509722155065631577003854124386213108459073102315900335727604195",
+      "shares": 29.1971,
+      "price": 0.685,
+      "cost": 20.0,
+      "copied_from": "0x204f72f35326db932158cba6adff0b9a1da95e14",
+      "trader_price": 0.69,
+      "slippage": -0.005
+    },
+    {
+      "ts": 1785254732,
+      "market_title": "Exact Score: Kuopion PS 0 - 0 Sabah FK?",
+      "outcome": "No",
+      "action": "BUY",
+      "token_id": "73027974692939253794014024864142965440432843916818755465650787278574557193111",
+      "shares": 24.2424,
+      "price": 0.825,
+      "cost": 20.0,
+      "copied_from": "0x204f72f35326db932158cba6adff0b9a1da95e14",
+      "trader_price": 0.8100000281,
+      "slippage": 0.015
+    },
+    {
+      "ts": 1785254792,
+      "market_title": "Will Kuopion PS win on 2026-07-29?",
+      "outcome": "No",
+      "action": "BUY",
+      "token_id": "59478697407353950347268723964763429170756804066829805925090412410229678414875",
+      "shares": 30.5344,
+      "price": 0.655,
+      "cost": 20.0,
+      "copied_from": "0x204f72f35326db932158cba6adff0b9a1da95e14",
+      "trader_price": 0.66,
+      "slippage": -0.005
+    }
+  ]
+}

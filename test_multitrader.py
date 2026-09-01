@@ -6,12 +6,16 @@ from bot.trader_finder import get_top_traders
 from bot.activity_monitor import _is_line_bet
 from bot.copy_bot import compute_trade_size_pct
 
-# Filtre : paris de ligne exclus, autres marchés sportifs autorisés
+# Filtre : paris de ligne ET marchés de match du jour exclus (v3 post-gel 28/07)
 assert _is_line_bet("Lakers vs Celtics O/U 220.5") is True
 assert _is_line_bet("Spread: Chiefs -3.5") is True
 assert _is_line_bet("Over/Under 2.5 goals") is True
-assert _is_line_bet("Exact Score: France 3 - 2 Morocco?") is False
+assert _is_line_bet("Exact Score: France 3 - 2 Morocco?") is True
+assert _is_line_bet("Will IFK Norrkoping FK win on 2026-07-28?") is True
+assert _is_line_bet("Will Kuopion PS vs. Sabah FK end in a draw?") is True
+# Marchés à horizon long / non-lignes : copiés
 assert _is_line_bet("Will Real Madrid win the Champions League?") is False
+assert _is_line_bet("Will X win the election?") is False
 assert _is_line_bet("ITF Columbus: Abanda vs Grubor") is False
 print("Filtre line-bet OK")
 
@@ -30,10 +34,12 @@ fake_leaders = [
     {"proxyWallet": f"0xAA{i}", "userName": f"trader{i}", "pnl": 1000000 - i, "vol": 1, "rank": i + 1}
     for i in range(5)
 ]
-# trader1 : 100% sports (disqualifié), les autres 0%
+# trader1 : 100% sports (disqualifié), trader2 : hyperactif 300 trades/7j (disqualifié)
 def fake_activity(address, since_ts=None, limit=100, trade_type="TRADE", side="BUY"):
     if address == "0xAA1":
         return [{"title": "Lakers vs. Celtics", "timestamp": 999}] * 10
+    if address == "0xAA2":
+        return [{"title": "Will X win the election?", "timestamp": 999}] * 300
     return [{"title": "Will X win the election?", "timestamp": 999}] * 3
 
 tf.get_leaderboard = lambda **kw: fake_leaders
@@ -41,8 +47,8 @@ tf.get_user_activity = fake_activity
 cb.get_user_activity = fake_activity
 
 traders = get_top_traders(3)
-assert [t["username"] for t in traders] == ["trader0", "trader2", "trader3"], traders
-print("Top 3 qualifiés OK (trader1 disqualifié ratio sports 100%)")
+assert [t["username"] for t in traders] == ["trader0", "trader3", "trader4"], traders
+print("Top 3 qualifiés OK (trader1 rejeté sports 100%, trader2 rejeté hyperactif 43 trades/j)")
 
 # refresh_traders : état complet + sizing par trader
 state = cb._default_state()

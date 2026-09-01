@@ -8,8 +8,10 @@ encaisse un REDEEM > 0 même quand NOTRE côté a perdu — toutes nos défaites
 étaient comptées comme des victoires (bug du +57 000% du 28/07/2026).
 
 Logique :
-  marché closed + prix final de NOTRE token ≥ 0.999 → gagné
-  marché closed + prix final de NOTRE token ≤ 0.001 → perdu
+  1. Gamma : marché closed + prix final de NOTRE token ≥ 0.999 → gagné, ≤ 0.001 → perdu
+  2. Fallback CLOB /markets/{condition_id} : Gamma archive les vieux marchés sportifs
+     (réponse vide sur clob_token_ids) — le champ tokens[].winner de la CLOB reste
+     disponible et fait foi (cause du gel du bot 28/07→01/09/2026).
   sinon (marché ouvert, prix intermédiaire, données absentes) → pas résolu
 """
 import sys
@@ -17,7 +19,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import json
-from api.clob_api import get_market_by_token
+from api.clob_api import get_market_by_token, get_clob_market
 
 
 def _final_token_price(market: dict, token_id: str) -> float | None:
@@ -41,6 +43,38 @@ def _final_token_price(market: dict, token_id: str) -> float | None:
         return None
 
 
+def _gamma_resolution(token_id: str) -> bool | None:
+    """Résolution via Gamma. True/False si tranchée, None sinon."""
+    market = get_market_by_token(token_id)
+    if not market or not market.get("closed"):
+        return None
+    price = _final_token_price(market, token_id)
+    if price is None:
+        return None
+    if price >= 0.999:
+        return True
+    if price <= 0.001:
+        return False
+    return None
+
+
+def _clob_resolution(condition_id: str, token_id: str) -> bool | None:
+    """Résolution via CLOB tokens[].winner. True/False si tranchée, None sinon."""
+    if not condition_id:
+        return None
+    market = get_clob_market(condition_id)
+    if not market or not market.get("closed"):
+        return None
+    tokens = market.get("tokens") or []
+    # Marché fermé mais pas encore réglé : aucun winner désigné
+    if not any(t.get("winner") for t in tokens):
+        return None
+    our = next((t for t in tokens if t.get("token_id") == token_id), None)
+    if our is None:
+        return None
+    return bool(our.get("winner"))
+
+
 def check_resolutions(positions: dict, since_ts: int = 0) -> list[dict]:
     """
     Retourne la liste des positions résolues.
@@ -57,23 +91,10 @@ def check_resolutions(positions: dict, since_ts: int = 0) -> list[dict]:
 
     for token_id, pos in positions.items():
         try:
-            market = get_market_by_token(token_id)
-            if not market:
-                continue
-            if not market.get("closed"):
-                continue
-
-            price = _final_token_price(market, token_id)
-            if price is None:
-                continue
-
-            # Ne conclure que sur une résolution franche (1.0 ou 0.0).
-            # Un marché fermé avec prix intermédiaire n'est pas encore réglé.
-            if price >= 0.999:
-                won = True
-            elif price <= 0.001:
-                won = False
-            else:
+            won = _gamma_resolution(token_id)
+            if won is None:
+                won = _clob_resolution(pos.get("condition_id", ""), token_id)
+            if won is None:
                 continue
 
             resolved.append({

@@ -33,6 +33,21 @@ def get_market_by_token(token_id: str) -> dict | None:
         return None
 
 
+def get_clob_market(condition_id: str) -> dict | None:
+    """
+    Marché via la CLOB API par condition_id. Source canonique de résolution :
+    tokens[].winner reste disponible même quand Gamma a archivé le marché
+    (les vieux marchés sportifs disparaissent de /markets?clob_token_ids=…).
+    """
+    try:
+        data = _get(CLOB_API_BASE, f"/markets/{condition_id}")
+        if isinstance(data, dict) and data.get("condition_id"):
+            return data
+        return None
+    except Exception:
+        return None
+
+
 def get_midpoint(token_id: str) -> float | None:
     """
     Prix actuel d'un token (0.0 à 1.0).

@@ -30,6 +30,7 @@ from config import (
     DAILY_BUDGET_PCT, MIN_TRADE_SIZE_PCT, MAX_TRADE_SIZE_PCT, TRADE_FREQ_WINDOW_H,
     STOP_LOSS_PCT, MAX_SEEN_TX_HASHES,
     MAX_OPEN_POSITIONS, CONDITION_COOLDOWN_H, TOP_N_TRADERS,
+    MAX_HOLD_DAYS, MAX_POSITIONS_PER_TRADER,
 )
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -251,10 +252,14 @@ def process_trades(state: dict) -> None:
     cooldown_sec = int(CONDITION_COOLDOWN_H * 3600)
 
     # Précalculer l'exposition par condition_id (somme des cost_basis des positions ouvertes)
+    # et le nombre de positions ouvertes par trader copié
     condition_exposure = {}
+    positions_per_trader = {}
     for tid, pos in pf["positions"].items():
         cid = pos.get("condition_id", "")
         condition_exposure[cid] = condition_exposure.get(cid, 0) + pos["cost_basis"]
+        src = pos.get("copied_from", "")
+        positions_per_trader[src] = positions_per_trader.get(src, 0) + 1
 
     for trade in new_trades:
         token_id = trade["token_id"]
@@ -269,6 +274,12 @@ def process_trades(state: dict) -> None:
         # Limite du nombre de positions ouvertes
         if len(pf["positions"]) >= MAX_OPEN_POSITIONS:
             log(state, f"Max positions atteint ({MAX_OPEN_POSITIONS}) — ignoré")
+            continue
+
+        # Cap par trader : un seul trader ne peut pas remplir le book
+        trader_addr = trade["trader"]["address"]
+        if positions_per_trader.get(trader_addr, 0) >= MAX_POSITIONS_PER_TRADER:
+            log(state, f"Cap {MAX_POSITIONS_PER_TRADER} positions/trader atteint pour {trade['trader']['username'][:20]} — ignoré")
             continue
 
         # Prix actuel
@@ -312,9 +323,10 @@ def process_trades(state: dict) -> None:
             tx_hash = trade.get("tx_hash", "")
             if tx_hash:
                 seen_tx_hashes.add(tx_hash)
-            # Mettre à jour le cooldown et l'exposition en mémoire
+            # Mettre à jour le cooldown, l'exposition et le compteur par trader
             last_buy_per_condition[condition_id] = now
             condition_exposure[condition_id] = existing_cond_exposure + amount
+            positions_per_trader[trader_addr] = positions_per_trader.get(trader_addr, 0) + 1
             log(state, (
                 f"Trade copié ({trader['username'][:20]}) : [{trade['outcome']}] {market_title[:50]} "
                 f"@ {current_price:.3f} — ${amount:.1f} USDC"
@@ -324,6 +336,38 @@ def process_trades(state: dict) -> None:
     all_hashes = list(seen_tx_hashes)
     state["seen_tx_hashes"] = all_hashes[-MAX_SEEN_TX_HASHES:]
     state["last_activity_check"] = int(time.time())
+
+
+def process_stale_positions(state: dict) -> None:
+    """Sortie forcée des positions plus vieilles que MAX_HOLD_DAYS.
+    Filet de sécurité anti-gel : une position qui ne se résout pas (marché
+    archivé, trader parti) ne doit pas occuper un slot indéfiniment."""
+    pf = portfolio_mod.load(INITIAL_BALANCE)
+    if not pf["positions"]:
+        return
+
+    now = int(time.time())
+    max_age_sec = MAX_HOLD_DAYS * 86400
+
+    for token_id in list(pf["positions"]):
+        pos = pf["positions"][token_id]
+        if now - pos.get("opened_at", now) < max_age_sec:
+            continue
+
+        price = get_midpoint(token_id)
+        if price is None:
+            # Aucune donnée de marché : sortie neutre au prix d'entrée (P&L 0)
+            price = pos["avg_price"]
+            log(state, f"Position expirée sans prix marché : {pos['market_title'][:40]} — sortie neutre")
+
+        result = portfolio_mod.paper_sell(pf, token_id, price)
+        if result:
+            portfolio_mod.save(pf)
+            sign = "+" if result["pnl"] >= 0 else ""
+            log(state, (
+                f"EXPIRÉ (>{MAX_HOLD_DAYS}j) : [{result['outcome']}] {result['market_title'][:45]} "
+                f"@ {price:.3f} → P&L {sign}{result['pnl']:.2f}"
+            ))
 
 
 def process_resolutions(state: dict) -> None:
@@ -373,6 +417,7 @@ def run():
 
             if state.get("traders"):
                 process_resolutions(state)
+                process_stale_positions(state)
                 process_sells(state)
                 process_trades(state)
             else:

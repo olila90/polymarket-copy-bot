@@ -5,15 +5,21 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import re
 import time as _time
 from api.data_api import get_user_activity
-from config import MIN_TRADE_USD, MAX_TRADE_AGE_H, LINE_BET_KEYWORDS
+from config import MIN_TRADE_USD, MAX_TRADE_AGE_H, LINE_BET_KEYWORDS, LINE_BET_PATTERNS
+
+_LINE_BET_RE = [re.compile(p, re.IGNORECASE) for p in LINE_BET_PATTERNS]
 
 
 def _is_line_bet(title: str) -> bool:
-    """Pari de ligne pur (O/U, Spread…) : 50/50 par construction, non copiable.
-    Les autres marchés sportifs (vainqueur, score exact) sont copiés."""
-    return any(kw in title for kw in LINE_BET_KEYWORDS)
+    """Pari sans edge copiable : lignes O/U/Spread, mais aussi les marchés de
+    match du jour (« Will X win on 2026-07-28? », draw, Exact Score) — quasi
+    50/50 par construction et résolus en heures : le retard de copie tue l'edge."""
+    if any(kw in title for kw in LINE_BET_KEYWORDS):
+        return True
+    return any(rx.search(title) for rx in _LINE_BET_RE)
 
 
 def get_new_trades(address: str, since_ts: int, seen_tx_hashes: set | None = None) -> list[dict]:

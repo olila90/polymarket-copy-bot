@@ -22,9 +22,19 @@ MAX_OPEN_POSITIONS = 6          # Nombre max de positions ouvertes simultanées
 CONDITION_COOLDOWN_H = 4        # Cooldown entre deux achats sur le même condition_id
 MAX_SPORTS_RATIO = 0.60         # Rejeter un trader si >60% de ses trades sont des paris sportifs courts
 
+# Garde-fous v3 (post-gel du 28/07→01/09 : 6 positions swisstony bloquées 5 semaines)
+MAX_HOLD_DAYS = 7               # Sortie forcée (prix marché) des positions plus vieilles
+MAX_POSITIONS_PER_TRADER = 2    # Un seul trader ne peut pas remplir le book
+MAX_TRADER_DAILY_TRADES = 25    # Rejeter les market makers hyperactifs (non copiables)
+
 # Paris de ligne purs (50/50 par construction, edge non copiable) — exclus par trade
 LINE_BET_KEYWORDS = (
     "O/U", "Spread:", "Over/Under", "Total:", "Moneyline",
+    "Exact Score", "end in a draw",
+)
+# Motifs regex équivalents : "Will X win on 2026-07-28?" = moneyline déguisée
+LINE_BET_PATTERNS = (
+    r"\bwin on \d{4}-\d{2}-\d{2}",
 )
 # Liste sports complète — sert uniquement à calculer le ratio sports d'un trader
 # (qualification). Les marchés sportifs hors paris de ligne SONT copiés.
