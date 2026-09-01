@@ -44,7 +44,7 @@ def get_top_traders(n: int = TOP_N_TRADERS) -> list[dict]:
         leaders = get_leaderboard(
             time_period=LEADERBOARD_PERIOD,
             order_by=LEADERBOARD_METRIC,
-            limit=10,
+            limit=25,  # filtre durci (sports + hyperactifs) : creuser plus profond pour trouver 3 qualifiés
         )
         if not leaders:
             return []
@@ -65,7 +65,7 @@ def get_top_traders(n: int = TOP_N_TRADERS) -> list[dict]:
                 continue
             qualified.append({
                 "address": address,
-                "username": top.get("userName", "Anonyme"),
+                "username": top.get("userName") or address[:10],
                 "pnl": float(top.get("pnl", 0)),
                 "volume": float(top.get("vol", 0)),
                 "rank": int(top.get("rank", 1)),
