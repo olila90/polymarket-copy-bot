@@ -3,7 +3,7 @@
   "trader_username": "VPenguin",
   "trader_pnl": 196742.0506087474,
   "last_leaderboard_refresh": 1780324196,
-  "last_activity_check": 1788294922,
+  "last_activity_check": 1788295051,
   "total_trades_copied": 3,
   "estimated_daily_trades": 216,
   "dynamic_trade_size_pct": 0.02,
@@ -50,7 +50,11 @@
     "2026-09-01 22:34:14 \u2014 Refresh leaderboard...",
     "2026-09-01 22:34:16 \u2014 Impossible de r\u00e9cup\u00e9rer le leaderboard.",
     "2026-09-01 22:35:18 \u2014 Refresh leaderboard...",
-    "2026-09-01 22:35:20 \u2014 Impossible de r\u00e9cup\u00e9rer le leaderboard."
+    "2026-09-01 22:35:20 \u2014 Impossible de r\u00e9cup\u00e9rer le leaderboard.",
+    "2026-09-01 22:36:22 \u2014 Refresh leaderboard...",
+    "2026-09-01 22:36:24 \u2014 Impossible de r\u00e9cup\u00e9rer le leaderboard.",
+    "2026-09-01 22:37:27 \u2014 Refresh leaderboard...",
+    "2026-09-01 22:37:29 \u2014 Impossible de r\u00e9cup\u00e9rer le leaderboard."
   ],
   "traders": [
     {

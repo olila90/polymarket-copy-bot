@@ -30,7 +30,7 @@ from config import (
     DAILY_BUDGET_PCT, MIN_TRADE_SIZE_PCT, MAX_TRADE_SIZE_PCT, TRADE_FREQ_WINDOW_H,
     STOP_LOSS_PCT, MAX_SEEN_TX_HASHES,
     MAX_OPEN_POSITIONS, CONDITION_COOLDOWN_H, TOP_N_TRADERS,
-    MAX_HOLD_DAYS, MAX_POSITIONS_PER_TRADER,
+    MAX_HOLD_DAYS, MAX_POSITIONS_PER_TRADER, MAX_TRADER_DAILY_TRADES,
 )
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -131,6 +131,11 @@ def refresh_traders(state: dict) -> None:
             log(state, f"Nouveau trader suivi : {trader['username']} (PnL: ${trader['pnl']:,.0f}{sports_info})")
 
         n = estimate_daily_trades(trader["address"])
+        # Le filtre leaderboard travaille en moyenne 7j ; un market maker qui
+        # vient de s'activer (burst 24h) passe entre les mailles — rattrapage ici
+        if n > MAX_TRADER_DAILY_TRADES:
+            log(state, f"{trader['username'][:20]} rejeté — {n} trades en 24h (market maker probable)")
+            continue
         pct = compute_trade_size_pct(n, n_traders)
         traders.append({
             "address": trader["address"],
